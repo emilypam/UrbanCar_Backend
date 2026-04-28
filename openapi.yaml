@@ -1,0 +1,553 @@
+openapi: 3.0.3
+info:
+  title: RentCar API — Sistema de Alquiler de Autos
+  description: |
+    API REST para el sistema de alquiler de autos. Arquitectura Clean Architecture
+    con módulos de vehículos, reservas, alquileres, devoluciones, pagos y facturación.
+
+    ## Flujo principal
+    1. El cliente busca vehículos disponibles (`GET /vehiculos/search`)
+    2. Crea una reserva (`POST /reservas`)
+    3. Realiza el pago (`POST /pagos`)
+    4. El admin inicia el alquiler (`POST /alquileres`)
+    5. Al terminar, el admin registra la devolución (`POST /devoluciones`)
+    6. Se genera la factura (`POST /facturas`)
+
+    ## Autenticación
+    JWT Bearer token. Obtener en `POST /auth/login`.
+
+    ## Preparado para integración futura (Reto 2)
+    Booking Prototipo usará: `GET /vehiculos/search`, `POST /reservas`,
+    `PATCH /reservas/{id}/cancel`, `POST /pagos`.
+
+    Eventos outbox modelados: `RESERVA_CREADA`, `RESERVA_CANCELADA`,
+    `PAGO_REGISTRADO`, `ALQUILER_INICIADO`, `VEHICULO_DEVUELTO`, `FACTURA_GENERADA`.
+  version: 1.0.0
+  contact:
+    name: RentCar Ecuador
+    email: dev@rentcar.ec
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Desarrollo local
+  - url: https://rentcar-api.render.com/api/v1
+    description: Producción
+
+tags:
+  - name: Auth
+    description: Autenticación y perfil
+  - name: Vehículos
+    description: Catálogo y gestión de vehículos
+  - name: Reservas
+    description: Reservas de vehículos
+  - name: Alquileres
+    description: Alquileres activos
+  - name: Devoluciones
+    description: Devoluciones de vehículos
+  - name: Pagos
+    description: Pagos de reservas
+  - name: Facturas
+    description: Facturación
+  - name: Admin
+    description: Panel de administración (ADMIN)
+  - name: Catálogos
+    description: Datos de referencia públicos
+  - name: Auditoría
+    description: Historial, Kardex y Outbox (ADMIN)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code:    { type: string }
+            message: { type: string }
+
+    RegisterRequest:
+      type: object
+      required: [email, password, nombres, apellidos]
+      properties:
+        email:     { type: string, format: email }
+        password:  { type: string, minLength: 6 }
+        nombres:   { type: string }
+        apellidos: { type: string }
+        cedula:    { type: string }
+        telefono:  { type: string }
+        ciudadId:  { type: string, format: uuid }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    CreateVehiculoRequest:
+      type: object
+      required: [placa, agenciaId, modeloId, categoriaId, tipoCombustibleId, tipoTransmisionId, color, anio, precioDia]
+      properties:
+        placa:             { type: string }
+        agenciaId:         { type: string, format: uuid }
+        modeloId:          { type: string, format: uuid }
+        categoriaId:       { type: string, format: uuid }
+        tipoCombustibleId: { type: string, format: uuid }
+        tipoTransmisionId: { type: string, format: uuid }
+        color:             { type: string }
+        anio:              { type: integer }
+        kilometraje:       { type: integer, default: 0 }
+        numeroPasajeros:   { type: integer, default: 5 }
+        precioDia:         { type: number }
+        imagenUrl:         { type: string }
+        descripcion:       { type: string }
+
+    CreateReservaRequest:
+      type: object
+      required: [vehiculoId, agenciaId, fechaInicio, fechaFin]
+      properties:
+        vehiculoId:   { type: string, format: uuid }
+        agenciaId:    { type: string, format: uuid }
+        fechaInicio:  { type: string, format: date, example: "2025-06-01" }
+        fechaFin:     { type: string, format: date, example: "2025-06-04" }
+        seguroId:     { type: string, format: uuid }
+        canalVentaId: { type: string, format: uuid }
+        extras:
+          type: array
+          items:
+            type: object
+            properties:
+              extraId:  { type: string, format: uuid }
+              cantidad: { type: integer, default: 1 }
+        notas: { type: string }
+
+    CreateAlquilerRequest:
+      type: object
+      required: [reservaId, kmSalida]
+      properties:
+        reservaId:     { type: string, format: uuid }
+        kmSalida:      { type: integer }
+        observaciones: { type: string }
+
+    CreateDevolucionRequest:
+      type: object
+      required: [alquilerId, kmEntrada, estadoVehiculo]
+      properties:
+        alquilerId:     { type: string, format: uuid }
+        kmEntrada:      { type: integer }
+        estadoVehiculo: { type: string, example: "Bueno" }
+        cargoExtra:     { type: number, default: 0 }
+        observaciones:  { type: string }
+
+    CreatePagoRequest:
+      type: object
+      required: [reservaId, monto, metodoPago]
+      properties:
+        reservaId:  { type: string, format: uuid }
+        monto:      { type: number }
+        metodoPago: { type: string, enum: [EFECTIVO, TARJETA, TRANSFERENCIA] }
+        referencia: { type: string }
+
+    CreateFacturaRequest:
+      type: object
+      required: [reservaId]
+      properties:
+        reservaId:   { type: string, format: uuid }
+        pagoId:      { type: string, format: uuid }
+        rucCliente:  { type: string }
+        razonSocial: { type: string }
+
+paths:
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201': { description: Usuario creado con token JWT }
+        '409': { description: Email ya registrado }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Token JWT }
+        '400': { description: Credenciales inválidas }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Perfil del usuario autenticado
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Datos del usuario }
+
+  /vehiculos:
+    get:
+      tags: [Vehículos]
+      summary: Listar vehículos (paginado)
+      parameters:
+        - { in: query, name: page,  schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 20 } }
+      responses:
+        '200': { description: Lista paginada }
+    post:
+      tags: [Vehículos]
+      summary: Crear vehículo (ADMIN)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateVehiculoRequest' }
+      responses:
+        '201': { description: Vehículo creado }
+
+  /vehiculos/marketplace:
+    get:
+      tags: [Vehículos]
+      summary: Vehículos disponibles para marketplace público
+      parameters:
+        - { in: query, name: ciudadId,          schema: { type: string } }
+        - { in: query, name: categoriaId,       schema: { type: string } }
+        - { in: query, name: tipoCombustibleId, schema: { type: string } }
+        - { in: query, name: tipoTransmisionId, schema: { type: string } }
+      responses:
+        '200': { description: Vehículos disponibles }
+
+  /vehiculos/search:
+    get:
+      tags: [Vehículos]
+      summary: Buscar disponibilidad por rango de fechas
+      description: |
+        Endpoint principal de disponibilidad. Excluye reservas solapadas.
+        Usado también por el futuro Booking Prototipo.
+      parameters:
+        - { in: query, name: fechaInicio,       required: true,  schema: { type: string, format: date } }
+        - { in: query, name: fechaFin,          required: true,  schema: { type: string, format: date } }
+        - { in: query, name: ciudadId,          schema: { type: string } }
+        - { in: query, name: categoriaId,       schema: { type: string } }
+        - { in: query, name: tipoCombustibleId, schema: { type: string } }
+        - { in: query, name: tipoTransmisionId, schema: { type: string } }
+      responses:
+        '200': { description: Vehículos disponibles en el rango }
+        '400': { description: Fechas inválidas }
+
+  /vehiculos/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Vehículos]
+      summary: Detalle de vehículo
+      responses:
+        '200': { description: Vehículo con relaciones }
+        '404': { description: No encontrado }
+    patch:
+      tags: [Vehículos]
+      summary: Actualizar vehículo (ADMIN)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Vehículos]
+      summary: Eliminar vehículo — soft delete (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Eliminado }
+
+  /reservas:
+    get:
+      tags: [Reservas]
+      summary: Listar todas las reservas (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Lista de reservas }
+    post:
+      tags: [Reservas]
+      summary: Crear reserva
+      description: |
+        El backend recalcula el precio. Valida solapamiento de fechas.
+        Publica evento RESERVA_CREADA en outbox.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateReservaRequest' }
+      responses:
+        '201': { description: Reserva creada }
+        '422': { description: No disponible o fechas solapadas }
+
+  /reservas/my:
+    get:
+      tags: [Reservas]
+      summary: Mis reservas
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Reservas del usuario autenticado }
+
+  /reservas/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Reservas]
+      summary: Detalle de reserva
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Reserva con relaciones }
+        '403': { description: Acceso denegado }
+    patch:
+      tags: [Reservas]
+      summary: Actualizar estado (ADMIN)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [PENDIENTE, CONFIRMADA, ACTIVA, COMPLETADA, CANCELADA] }
+      responses:
+        '200': { description: Estado actualizado }
+
+  /reservas/{id}/cancel:
+    patch:
+      tags: [Reservas]
+      summary: Cancelar reserva
+      description: Solo para reservas en estado PENDIENTE o CONFIRMADA.
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Reserva cancelada }
+        '400': { description: No cancelable en estado actual }
+
+  /alquileres:
+    get:
+      tags: [Alquileres]
+      summary: Listar alquileres (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Lista de alquileres }
+    post:
+      tags: [Alquileres]
+      summary: Iniciar alquiler (ADMIN)
+      description: Cambia vehículo a EN_USO, reserva a ACTIVA. Registra Kardex.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAlquilerRequest' }
+      responses:
+        '201': { description: Alquiler iniciado }
+
+  /alquileres/{id}:
+    get:
+      tags: [Alquileres]
+      summary: Detalle de alquiler (ADMIN)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Detalle del alquiler }
+
+  /devoluciones:
+    get:
+      tags: [Devoluciones]
+      summary: Listar devoluciones (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Lista de devoluciones }
+    post:
+      tags: [Devoluciones]
+      summary: Registrar devolución (ADMIN)
+      description: Finaliza alquiler, vehículo vuelve a DISPONIBLE. Registra Kardex.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDevolucionRequest' }
+      responses:
+        '201': { description: Devolución registrada }
+
+  /devoluciones/{id}:
+    get:
+      tags: [Devoluciones]
+      summary: Detalle de devolución (ADMIN)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Detalle }
+
+  /pagos:
+    get:
+      tags: [Pagos]
+      summary: Listar pagos (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Lista de pagos }
+    post:
+      tags: [Pagos]
+      summary: Registrar pago
+      description: Valida que el monto cubra el total. Confirma la reserva si estaba PENDIENTE.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePagoRequest' }
+      responses:
+        '201': { description: Pago registrado }
+        '400': { description: Monto insuficiente }
+
+  /pagos/{id}:
+    get:
+      tags: [Pagos]
+      summary: Detalle de pago
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Detalle del pago }
+
+  /facturas:
+    get:
+      tags: [Facturas]
+      summary: Listar facturas (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Lista de facturas }
+    post:
+      tags: [Facturas]
+      summary: Generar factura
+      description: Calcula subtotal, IVA 15% y total. Genera detalles automáticamente.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFacturaRequest' }
+      responses:
+        '201': { description: Factura generada }
+
+  /facturas/{id}:
+    get:
+      tags: [Facturas]
+      summary: Detalle de factura
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Factura con detalles }
+
+  /marcas:            { get: { tags: [Catálogos], summary: Marcas de vehículos,         responses: { '200': { description: Lista } } } }
+  /modelos:           { get: { tags: [Catálogos], summary: Modelos con marca,            responses: { '200': { description: Lista } } } }
+  /categorias:        { get: { tags: [Catálogos], summary: Categorías de vehículos,      responses: { '200': { description: Lista } } } }
+  /tipos-combustible: { get: { tags: [Catálogos], summary: Tipos de combustible,         responses: { '200': { description: Lista } } } }
+  /tipos-transmision: { get: { tags: [Catálogos], summary: Tipos de transmisión,         responses: { '200': { description: Lista } } } }
+  /extras:            { get: { tags: [Catálogos], summary: Extras y equipamiento,        responses: { '200': { description: Lista con precio/día } } } }
+  /seguros:           { get: { tags: [Catálogos], summary: Seguros disponibles,          responses: { '200': { description: Lista con precio/día } } } }
+  /tarifas:           { get: { tags: [Catálogos], summary: Tarifas por categoría,        responses: { '200': { description: Lista } } } }
+  /provincias:        { get: { tags: [Catálogos], summary: Provincias,                   responses: { '200': { description: Lista } } } }
+  /ciudades:          { get: { tags: [Catálogos], summary: Ciudades con provincia,       responses: { '200': { description: Lista } } } }
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Estadísticas del sistema
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              example:
+                success: true
+                data:
+                  vehiculos:  { total: 10, disponibles: 7 }
+                  reservas:   { total: 45, activas: 3 }
+                  usuarios:   { total: 28 }
+                  alquileres: { total: 20 }
+                  facturas:   { total: 18 }
+                  ingresos:   { total: 14500.00 }
+
+  /admin/agencias:
+    get:  { tags: [Admin], summary: Listar agencias,  security: [{ BearerAuth: [] }], responses: { '200': { description: Lista } } }
+    post: { tags: [Admin], summary: Crear agencia,    security: [{ BearerAuth: [] }], requestBody: { content: { application/json: { schema: { type: object } } } }, responses: { '201': { description: Creada } } }
+
+  /admin/agencias/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:    { tags: [Admin], summary: Detalle agencia,     security: [{ BearerAuth: [] }], responses: { '200': { description: OK } } }
+    patch:  { tags: [Admin], summary: Actualizar agencia,  security: [{ BearerAuth: [] }], requestBody: { content: { application/json: { schema: { type: object } } } }, responses: { '200': { description: OK } } }
+    delete: { tags: [Admin], summary: Eliminar agencia,    security: [{ BearerAuth: [] }], responses: { '200': { description: OK } } }
+
+  /admin/empresas:
+    get:  { tags: [Admin], summary: Listar empresas,  security: [{ BearerAuth: [] }], responses: { '200': { description: Lista } } }
+    post: { tags: [Admin], summary: Crear empresa,    security: [{ BearerAuth: [] }], requestBody: { content: { application/json: { schema: { type: object } } } }, responses: { '201': { description: Creada } } }
+
+  /admin/empresas/{id}:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:    { tags: [Admin], summary: Detalle empresa,    security: [{ BearerAuth: [] }], responses: { '200': { description: OK } } }
+    patch:  { tags: [Admin], summary: Actualizar empresa, security: [{ BearerAuth: [] }], requestBody: { content: { application/json: { schema: { type: object } } } }, responses: { '200': { description: OK } } }
+    delete: { tags: [Admin], summary: Eliminar empresa,   security: [{ BearerAuth: [] }], responses: { '200': { description: OK } } }
+
+  /admin/historial:
+    get:
+      tags: [Auditoría]
+      summary: Historial de acciones (ADMIN)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { in: query, name: page,  schema: { type: integer, default: 1 } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+      responses:
+        '200': { description: Historial paginado }
+
+  /admin/kardex:
+    get:
+      tags: [Auditoría]
+      summary: Kardex de vehículos (ADMIN)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Kardex paginado }
+
+  /admin/outbox-events:
+    get:
+      tags: [Auditoría]
+      summary: Eventos outbox — preparación para Reto 2 (ADMIN)
+      description: Eventos listos para publicar en message broker (RabbitMQ/Kafka/Azure Service Bus).
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Eventos paginados }

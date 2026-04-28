@@ -1,0 +1,479 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Provincia {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String    @unique
+  codigo    String    @unique
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  ciudades  Ciudad[]
+
+  @@map("provincias")
+}
+
+model Ciudad {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre      String
+  provinciaId String?    @map("provincia_id") @db.Uuid
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  agencias    Agencia[]
+  provincia   Provincia? @relation(fields: [provinciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuarios    Usuario[]
+
+  @@unique([nombre, provinciaId])
+  @@map("ciudades")
+}
+
+model Empresa {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String    @unique
+  ruc       String    @unique
+  email     String?
+  telefono  String?
+  logoUrl   String?   @map("logo_url")
+  isActive  Boolean?  @default(true) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  agencias  Agencia[]
+
+  @@map("empresas")
+}
+
+model Agencia {
+  id        String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  empresaId String?    @map("empresa_id") @db.Uuid
+  ciudadId  String?    @map("ciudad_id") @db.Uuid
+  nombre    String?
+  direccion String?
+  telefono  String?
+  email     String?
+  isActive  Boolean?   @default(true) @map("is_active")
+  createdAt DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime?  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  ciudad    Ciudad?    @relation(fields: [ciudadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  empresa   Empresa?   @relation(fields: [empresaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reservas  Reserva[]
+  vehiculos Vehiculo[]
+
+  @@map("agencias")
+}
+
+model Marca {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String?   @unique
+  logoUrl   String?   @map("logo_url")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  modelos   Modelo[]
+
+  @@map("marcas")
+}
+
+model Modelo {
+  id        String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  marcaId   String?    @map("marca_id") @db.Uuid
+  nombre    String?
+  createdAt DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  marca     Marca?     @relation(fields: [marcaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehiculos Vehiculo[]
+
+  @@unique([marcaId, nombre])
+  @@map("modelos")
+}
+
+model Categoria {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre      String?    @unique
+  descripcion String?
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  tarifas     Tarifa[]
+  vehiculos   Vehiculo[]
+
+  @@map("categorias")
+}
+
+model TipoCombustible {
+  id        String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String?    @unique
+  vehiculos Vehiculo[]
+
+  @@map("tipos_combustible")
+}
+
+model TipoTransmision {
+  id        String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String?    @unique
+  vehiculos Vehiculo[]
+
+  @@map("tipos_transmision")
+}
+
+model ExtraEquipamiento {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre        String?        @unique
+  descripcion   String?
+  precioDia     Decimal?       @map("precio_dia") @db.Decimal(10, 2)
+  isActive      Boolean?       @default(true) @map("is_active")
+  createdAt     DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
+  reservaExtras ReservaExtra[]
+
+  @@map("extras_equipamiento")
+}
+
+model Vehiculo {
+  id                String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  agenciaId         String?          @map("agencia_id") @db.Uuid
+  modeloId          String?          @map("modelo_id") @db.Uuid
+  categoriaId       String?          @map("categoria_id") @db.Uuid
+  tipoCombustibleId String?          @map("tipo_combustible_id") @db.Uuid
+  tipoTransmisionId String?          @map("tipo_transmision_id") @db.Uuid
+  placa             String?          @unique
+  color             String?
+  anio              Int?
+  kilometraje       Int?             @default(0)
+  numeroPasajeros   Int?             @default(5) @map("numero_pasajeros")
+  precioDia         Decimal?         @map("precio_dia") @db.Decimal(10, 2)
+  imagenUrl         String?          @map("imagen_url")
+  descripcion       String?
+  status            vehicle_status?  @default(DISPONIBLE)
+  isActive          Boolean?         @default(true) @map("is_active")
+  deletedAt         DateTime?        @map("deleted_at") @db.Timestamp(6)
+  createdAt         DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime?        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  kardex            Kardex[]
+  mantenimientos    Mantenimiento[]
+  reservas          Reserva[]
+  agencia           Agencia?         @relation(fields: [agenciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  categoria         Categoria?       @relation(fields: [categoriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  modelo            Modelo?          @relation(fields: [modeloId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tipoCombustible   TipoCombustible? @relation(fields: [tipoCombustibleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tipoTransmision   TipoTransmision? @relation(fields: [tipoTransmisionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("vehiculos")
+}
+
+model Usuario {
+  id            String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email         String             @unique
+  passwordHash  String             @map("password_hash")
+  nombres       String?
+  apellidos     String?
+  cedula        String?            @unique
+  telefono      String?
+  ciudadId      String?            @map("ciudad_id") @db.Uuid
+  role          user_role?         @default(CLIENTE)
+  isActive      Boolean?           @default(true) @map("is_active")
+  createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime?          @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  cliente       Cliente?
+  historial     HistorialUsuario[]
+  reservas      Reserva[]
+  usuario_roles usuario_roles[]
+  ciudad        Ciudad?            @relation(fields: [ciudadId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("usuarios")
+}
+
+model Cliente {
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  usuarioId         String?   @unique @map("usuario_id") @db.Uuid
+  numeroLicencia    String?   @unique @map("numero_licencia")
+  fechaVencLicencia DateTime? @map("fecha_venc_licencia") @db.Timestamp(6)
+  createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  usuario           Usuario?  @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("clientes")
+}
+
+model Tarifa {
+  id          String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  categoriaId String?    @map("categoria_id") @db.Uuid
+  nombre      String?
+  precioDia   Decimal?   @map("precio_dia") @db.Decimal(10, 2)
+  diasMinimos Int?       @default(1) @map("dias_minimos")
+  isActive    Boolean?   @default(true) @map("is_active")
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  categoria   Categoria? @relation(fields: [categoriaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("tarifas")
+}
+
+model Seguro {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre      String?   @unique
+  descripcion String?
+  precioDia   Decimal?  @map("precio_dia") @db.Decimal(10, 2)
+  cobertura   String?
+  isActive    Boolean?  @default(true) @map("is_active")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  reservas    Reserva[]
+
+  @@map("seguros")
+}
+
+model CanalVenta {
+  id       String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre   String?   @unique
+  codigo   String?   @unique
+  reservas Reserva[]
+
+  @@map("canales_venta")
+}
+
+model SistemaExterno {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nombre    String?   @unique
+  codigo    String?   @unique
+  url       String?
+  apiKey    String?   @map("api_key")
+  isActive  Boolean?  @default(true) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@map("sistemas_externos")
+}
+
+model Reserva {
+  id            String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  correlationId String?         @unique @default(dbgenerated("uuid_generate_v4()")) @map("correlation_id") @db.Uuid
+  usuarioId     String?         @map("usuario_id") @db.Uuid
+  vehiculoId    String?         @map("vehiculo_id") @db.Uuid
+  agenciaId     String?         @map("agencia_id") @db.Uuid
+  seguroId      String?         @map("seguro_id") @db.Uuid
+  canalVentaId  String?         @map("canal_venta_id") @db.Uuid
+  codigoReserva String?         @unique @map("codigo_reserva")
+  fechaInicio   DateTime?       @map("fecha_inicio") @db.Date
+  fechaFin      DateTime?       @map("fecha_fin") @db.Date
+  diasTotal     Int?            @map("dias_total")
+  precioBase    Decimal?        @map("precio_base") @db.Decimal(10, 2)
+  precioExtras  Decimal?        @default(0) @map("precio_extras") @db.Decimal(10, 2)
+  precioSeguro  Decimal?        @default(0) @map("precio_seguro") @db.Decimal(10, 2)
+  totalAmount   Decimal?        @map("total_amount") @db.Decimal(10, 2)
+  status        reserva_status? @default(PENDIENTE)
+  notas         String?
+  createdAt     DateTime?       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime?       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  alquiler      Alquiler?
+  facturas      Factura[]
+  pagos         Pago[]
+  extras        ReservaExtra[]
+  agencia       Agencia?        @relation(fields: [agenciaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  canalVenta    CanalVenta?     @relation(fields: [canalVentaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  seguro        Seguro?         @relation(fields: [seguroId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  usuario       Usuario?        @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehiculo      Vehiculo?       @relation(fields: [vehiculoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("reservas")
+}
+
+model ReservaExtra {
+  id        String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId String?            @map("reserva_id") @db.Uuid
+  extraId   String?            @map("extra_id") @db.Uuid
+  cantidad  Int?               @default(1)
+  precioDia Decimal?           @map("precio_dia") @db.Decimal(10, 2)
+  subtotal  Decimal?           @db.Decimal(10, 2)
+  extra     ExtraEquipamiento? @relation(fields: [extraId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reserva   Reserva?           @relation(fields: [reservaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([reservaId, extraId])
+  @@map("reserva_extras")
+}
+
+model Alquiler {
+  id             String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId      String?          @unique @map("reserva_id") @db.Uuid
+  kmSalida       Int?             @map("km_salida")
+  kmEntrada      Int?             @map("km_entrada")
+  fechaInicio    DateTime?        @map("fecha_inicio") @db.Timestamp(6)
+  fechaFin       DateTime?        @map("fecha_fin") @db.Timestamp(6)
+  cargoAdicional Decimal?         @default(0) @map("cargo_adicional") @db.Decimal(10, 2)
+  status         alquiler_status? @default(ACTIVO)
+  observaciones  String?
+  createdAt      DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime?        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  reserva        Reserva?         @relation(fields: [reservaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  devolucion     Devolucion?
+
+  @@map("alquileres")
+}
+
+model Devolucion {
+  id              String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  alquilerId      String?   @unique @map("alquiler_id") @db.Uuid
+  fechaDevolucion DateTime? @default(now()) @map("fecha_devolucion") @db.Timestamp(6)
+  kmEntrada       Int?      @map("km_entrada")
+  estadoVehiculo  String?   @map("estado_vehiculo")
+  cargoExtra      Decimal?  @default(0) @map("cargo_extra") @db.Decimal(10, 2)
+  observaciones   String?
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  alquiler        Alquiler? @relation(fields: [alquilerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("devoluciones")
+}
+
+model Pago {
+  id         String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId  String?      @map("reserva_id") @db.Uuid
+  monto      Decimal?     @db.Decimal(10, 2)
+  metodoPago String?      @map("metodo_pago")
+  referencia String?
+  status     pago_status? @default(PENDIENTE)
+  createdAt  DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt  DateTime?    @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  reserva    Reserva?     @relation(fields: [reservaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("pagos")
+}
+
+model Factura {
+  id            String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId     String?          @map("reserva_id") @db.Uuid
+  pagoId        String?          @unique @map("pago_id") @db.Uuid
+  numeroFactura String?          @unique @map("numero_factura")
+  rucCliente    String?          @map("ruc_cliente")
+  razonSocial   String?          @map("razon_social")
+  subtotal      Decimal?         @db.Decimal(10, 2)
+  iva           Decimal?         @db.Decimal(10, 2)
+  total         Decimal?         @db.Decimal(10, 2)
+  createdAt     DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  detalles      DetalleFactura[]
+  reserva       Reserva?         @relation(fields: [reservaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("facturas")
+}
+
+model DetalleFactura {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  facturaId   String?  @map("factura_id") @db.Uuid
+  descripcion String?
+  cantidad    Int?     @default(1)
+  precioUnit  Decimal? @map("precio_unit") @db.Decimal(10, 2)
+  subtotal    Decimal? @db.Decimal(10, 2)
+  factura     Factura? @relation(fields: [facturaId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("detalle_factura")
+}
+
+model HistorialUsuario {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  usuarioId String?   @map("usuario_id") @db.Uuid
+  accion    String?
+  entidad   String?
+  entidadId String?   @map("entidad_id")
+  detalle   Json?
+  ip        String?
+  userAgent String?   @map("user_agent")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  usuario   Usuario?  @relation(fields: [usuarioId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("historial_usuarios")
+}
+
+model Kardex {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  vehiculoId     String?   @map("vehiculo_id") @db.Uuid
+  evento         String?
+  estadoAnterior String?   @map("estado_anterior")
+  estadoNuevo    String?   @map("estado_nuevo")
+  usuarioId      String?   @map("usuario_id") @db.Uuid
+  referencia     String?
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  vehiculo       Vehiculo? @relation(fields: [vehiculoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("kardex")
+}
+
+model Mantenimiento {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  vehiculoId  String?   @map("vehiculo_id") @db.Uuid
+  tipo        String?
+  descripcion String?
+  fechaInicio DateTime? @map("fecha_inicio") @db.Timestamp(6)
+  fechaFin    DateTime? @map("fecha_fin") @db.Timestamp(6)
+  costo       Decimal?  @db.Decimal(10, 2)
+  tecnico     String?
+  isActive    Boolean?  @default(true) @map("is_active")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  vehiculo    Vehiculo? @relation(fields: [vehiculoId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("mantenimientos")
+}
+
+model OutboxEvent {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  correlationId String?        @map("correlation_id") @db.Uuid
+  usuarioId     String?        @map("usuario_id") @db.Uuid
+  evento        String?
+  payload       Json?
+  status        outbox_status? @default(PENDIENTE)
+  intentos      Int?           @default(0)
+  procesadoAt   DateTime?      @map("procesado_at") @db.Timestamp(6)
+  createdAt     DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
+
+  @@map("outbox_events")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model roles_permisos {
+  id              String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  rol_nombre      String          @unique @db.VarChar(50)
+  rol_descripcion String?
+  usuario_roles   usuario_roles[]
+}
+
+model usuario_roles {
+  usu_id         String         @db.Uuid
+  rol_id         String         @db.Uuid
+  roles_permisos roles_permisos @relation(fields: [rol_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios       Usuario        @relation(fields: [usu_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([usu_id, rol_id])
+}
+
+enum alquiler_status {
+  ACTIVO
+  FINALIZADO
+  CANCELADO
+}
+
+enum outbox_status {
+  PENDIENTE
+  PROCESADO
+  FALLIDO
+}
+
+enum pago_status {
+  PENDIENTE
+  COMPLETADO
+  FALLIDO
+  REEMBOLSADO
+}
+
+enum reserva_status {
+  PENDIENTE
+  CONFIRMADA
+  ACTIVA
+  COMPLETADA
+  CANCELADA
+}
+
+enum user_role {
+  ADMIN
+  OPERADOR
+  CLIENTE
+}
+
+enum vehicle_status {
+  DISPONIBLE
+  RESERVADO
+  EN_USO
+  MANTENIMIENTO
+  INACTIVO
+}
