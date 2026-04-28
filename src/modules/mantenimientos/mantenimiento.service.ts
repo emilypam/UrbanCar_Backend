@@ -52,7 +52,7 @@ export class MantenimientoService {
     await this.kardexRepository.registrar({
       vehiculoId:    dto.vehiculoId,
       evento:        'MANTENIMIENTO_INICIADO',
-      estadoAnterior,
+      estadoAnterior: estadoAnterior ?? undefined,
       estadoNuevo:   'MANTENIMIENTO',
       referencia:    (mantenimiento as any).id,
     });
