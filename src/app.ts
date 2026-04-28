@@ -47,6 +47,8 @@ import {
 // ─────────────────────────────────────────────────────────────
 const app = express();
 
+app.set('trust proxy', 1);
+
 // ── CORS ──────────────────────────────────────────────────────
 const envOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
